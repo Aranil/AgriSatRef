@@ -120,32 +120,38 @@ class ZarrProcessor:
         bounds = raster_array.rio.bounds()
         crs = raster_array.rio.crs
 
-        length = resolution[0]
-        width = abs(resolution[1])
+        length = abs(resolution[1])
+        width = abs(resolution[0])
 
         logger.info(f'Raster array shape: {shape}')
         logger.info(f'Raster array bounds: {bounds}')
         logger.info(f'CRS: {crs}')
         logger.info(f'Resolution: length={length}, width={width}')
 
-        # Create the grid polygons
-        cols = np.arange(bounds[0], bounds[2] + width, width)
-        rows = np.arange(bounds[1], bounds[3] + length, length)
-        rows = rows[::-1]  # Reverse rows so they start from the top
-
+        n_rows, n_cols = shape
         polygons = []
-        for x in cols:
-            for y in rows:
-                polygons.append(Polygon([(x, y), (x + width, y), (x + width, y - length), (x, y - length)]))
 
+        for i in range(n_rows):
+            for j in range(n_cols):
+                x_min = bounds[0] + j * width
+                y_max = bounds[3] - i * length
+                polygon = Polygon([
+                    (x_min, y_max),
+                    (x_min + width, y_max),
+                    (x_min + width, y_max - length),
+                    (x_min, y_max - length)
+                ])
+                polygons.append(polygon)
+
+        # Optional: include raster values
+        values = raster_array.values.flatten()
         grid = gpd.GeoDataFrame({'geometry': polygons})
 
-        if epsg is not None:
-            grid = grid.set_crs(f'epsg:{epsg}')
+        if epsg:
+            grid.set_crs(epsg=epsg, inplace=True)
         else:
-            grid = grid.set_crs(crs)
+            grid.set_crs(crs, inplace=True)
 
-        # Save to the specified vector format
         grid.to_file(vector_filename)
         logger.info(f"Vector file written to: {vector_filename}")
 
@@ -273,7 +279,8 @@ class ZarrProcessor:
         combined_data = aligned_existing.fillna(0) + new_data.fillna(0).astype(float)
         combined_data = combined_data.where(combined_data != 0, other=np.nan)
         return combined_data
-    # decide whichreproject is to keep and wich delete
+
+    # decide which reproject is to keep and wich delete
     '''
     def reproject(self, data, target_crs, source_crs):
         """
